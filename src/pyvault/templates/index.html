@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}PyVault - Home{% endblock %}
+
+{% block content %}
+<h2>Your Stored Passwords</h2>
+
+{% if passwords %}
+    <ul class="password-list">
+        {% for pwd in passwords %}
+        <li class="password-item">
+            <strong>{{ pwd.service }}</strong> ({{ pwd.username }})
+            <div>
+                <a href="{{ url_for('get_password', service=pwd.service) }}">View</a>
+                <a href="{{ url_for('update_password', service=pwd.service) }}">Update</a>
+                <a href="{{ url_for('delete_password', service=pwd.service) }}" onclick="return confirm('Are you sure you want to delete this password?')">Delete</a>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p>No passwords stored yet. <a href="{{ url_for('add_password') }}">Add your first password</a>.</p>
+{% endif %}
+{% endblock %}

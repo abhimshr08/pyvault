@@ -1,12 +1,13 @@
 # PyVault
 
-A secure command-line password manager built with Python.
+A secure password manager with both command-line and web interfaces, built with Python.
 
 ## Features
 
 - Secure password storage using Fernet symmetric encryption
 - SQLite database for persistence
 - Command-line interface with Click
+- Web-based graphical user interface with Flask
 - Password generation
 - CRUD operations: Add, Get, Update, Delete, List passwords
 
@@ -29,6 +30,17 @@ A secure command-line password manager built with Python.
    ```
 
 ## Usage
+
+### Web Interface (Recommended)
+
+Start the web application:
+```bash
+python -m pyvault.web
+```
+
+Then open your browser to `http://127.0.0.1:5000` to access the user-friendly web interface.
+
+### Command-Line Interface
 
 Initialize the database (first time only):
 ```bash

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}PyVault - Generate Password{% endblock %}
+
+{% block content %}
+<h2>Generated Password</h2>
+
+<div class="password-display">
+    <p>Here's a secure, randomly generated password:</p>
+    <div class="generated-password">{{ password }}</div>
+    <p><small>This password includes uppercase, lowercase, digits, and special characters.</small></p>
+</div>
+
+<div style="text-align: center; margin-top: 20px;">
+    <a href="{{ url_for('generate') }}" style="display: inline-block; padding: 10px 20px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; margin-right: 10px;">Generate Another</a>
+    <a href="{{ url_for('add_password') }}" style="display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px;">Use This Password</a>
+</div>
+{% endblock %}
