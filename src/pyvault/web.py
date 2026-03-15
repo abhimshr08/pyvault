@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
 from .database import init_db, SessionLocal
 from .models import Password
-from .encryption import encrypt_password, decrypt_password
+from .encryption import load_key, encrypt_password, decrypt_password
 from .utils import generate_password
 import os
 
@@ -36,8 +36,9 @@ def add_password():
             session.close()
             return redirect(url_for('add_password'))
 
-        encrypted_password = encrypt_password(password)
-        new_password = Password(service=service, username=username, password=encrypted_password)
+        key = load_key()
+        encrypted_password = encrypt_password(password, key)
+        new_password = Password(service=service, username=username, encrypted_password=encrypted_password)
         session.add(new_password)
         session.commit()
         session.close()
@@ -58,7 +59,8 @@ def get_password(service):
         flash(f'No password found for {service}', 'error')
         return redirect(url_for('index'))
 
-    decrypted_password = decrypt_password(password_entry.password)
+    key = load_key()
+    decrypted_password = decrypt_password(password_entry.encrypted_password, key)
     return render_template('get.html', service=service, username=password_entry.username, password=decrypted_password)
 
 @app.route('/update/<service>', methods=['GET', 'POST'])
@@ -74,7 +76,8 @@ def update_password(service):
 
     if request.method == 'POST':
         new_password = request.form['password'] or generate_password()
-        password_entry.password = encrypt_password(new_password)
+        key = load_key()
+        password_entry.encrypted_password = encrypt_password(new_password, key)
         session.commit()
         session.close()
         flash(f'Password for {service} updated successfully!', 'success')
