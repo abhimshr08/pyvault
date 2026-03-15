@@ -1,9 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
-from .database import init_db, get_db
+from .database import init_db, SessionLocal
 from .models import Password
 from .encryption import encrypt_password, decrypt_password
 from .utils import generate_password
-from sqlalchemy.orm import sessionmaker
 import os
 
 app = Flask(__name__)
@@ -15,8 +14,7 @@ init_db()
 @app.route('/')
 def index():
     """Home page - list all passwords"""
-    Session = sessionmaker(bind=get_db().bind)
-    session = Session()
+    session = SessionLocal()
     passwords = session.query(Password).all()
     session.close()
     return render_template('index.html', passwords=passwords)
@@ -29,8 +27,7 @@ def add_password():
         username = request.form['username']
         password = request.form['password'] or generate_password()
 
-        Session = sessionmaker(bind=get_db().bind)
-        session = Session()
+        session = SessionLocal()
 
         # Check if service already exists
         existing = session.query(Password).filter_by(service=service).first()
@@ -53,8 +50,7 @@ def add_password():
 @app.route('/get/<service>')
 def get_password(service):
     """Retrieve and display a password"""
-    Session = sessionmaker(bind=get_db().bind)
-    session = Session()
+    session = SessionLocal()
     password_entry = session.query(Password).filter_by(service=service).first()
     session.close()
 
@@ -68,8 +64,7 @@ def get_password(service):
 @app.route('/update/<service>', methods=['GET', 'POST'])
 def update_password(service):
     """Update an existing password"""
-    Session = sessionmaker(bind=get_db().bind)
-    session = Session()
+    session = SessionLocal()
     password_entry = session.query(Password).filter_by(service=service).first()
 
     if not password_entry:
@@ -91,8 +86,7 @@ def update_password(service):
 @app.route('/delete/<service>')
 def delete_password(service):
     """Delete a password"""
-    Session = sessionmaker(bind=get_db().bind)
-    session = Session()
+    session = SessionLocal()
     password_entry = session.query(Password).filter_by(service=service).first()
 
     if password_entry:
@@ -112,4 +106,4 @@ def generate():
     return render_template('generate.html', password=password)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
