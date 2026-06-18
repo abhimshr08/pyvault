@@ -12,7 +12,7 @@ from pyvault.cli import cli
 from pyvault.models import Password, User
 
 @pytest.fixture(autouse=True)
-def setup_db():
+def setup_db(monkeypatch):
     init_db()
     db = SessionLocal()
     # Clear the database before each test
@@ -20,16 +20,21 @@ def setup_db():
     db.query(User).delete()
     db.commit()
     db.close()
+    
+    # Mock pyotp.random_base32 to return a fixed secret key for predictability in tests
+    monkeypatch.setattr(pyotp, "random_base32", lambda: "JBSWY3DPEHPK3PXP")
 
 def test_register():
     runner = CliRunner()
+    totp = pyotp.totp.TOTP("JBSWY3DPEHPK3PXP")
     result = runner.invoke(cli, [
         'register',
         '--email', 'test@example.com',
         '--password', 'masterpassword'
-    ])
+    ], input=f"{totp.now()}\n")
     assert result.exit_code == 0
-    assert "ACCOUNT SUCCESSFULLY INITIALIZED" in result.output
+    assert "ACCOUNT SETUP INITIALIZED" in result.output
+    assert "ACCOUNT SUCCESSFULLY REGISTERED AND ACTIVATED" in result.output
     assert "Your Secret Key" in result.output
     assert "2FA Setup Key" in result.output
 
@@ -41,13 +46,14 @@ def test_register():
 
 def test_add_password():
     runner = CliRunner()
+    totp = pyotp.totp.TOTP("JBSWY3DPEHPK3PXP")
     
     # 1. Register user
     reg_result = runner.invoke(cli, [
         'register',
         '--email', 'user@example.com',
         '--password', 'mypassword'
-    ])
+    ], input=f"{totp.now()}\n")
     assert reg_result.exit_code == 0
     
     # Parse Secret Key and TOTP secret from output
@@ -61,7 +67,6 @@ def test_add_password():
     totp_secret = totp_secret_match.group(1)
     
     # Generate 2FA code
-    totp = pyotp.totp.TOTP(totp_secret)
     totp_code = totp.now()
 
     # 2. Add password using credentials
@@ -87,18 +92,17 @@ def test_add_password():
 
 def test_get_password():
     runner = CliRunner()
+    totp = pyotp.totp.TOTP("JBSWY3DPEHPK3PXP")
     
     # 1. Register user
     reg_result = runner.invoke(cli, [
         'register',
         '--email', 'user2@example.com',
         '--password', 'mypassword2'
-    ])
+    ], input=f"{totp.now()}\n")
     
     secret_key = re.search(r'Your Secret Key:\s+(PV-\S+)', reg_result.output).group(1)
     totp_secret = re.search(r'2FA Setup Key:\s+(\S+)', reg_result.output).group(1)
-    
-    totp = pyotp.totp.TOTP(totp_secret)
 
     # 2. Add password
     runner.invoke(cli, [

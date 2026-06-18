@@ -57,21 +57,33 @@ def register(email, password):
     totp_secret = pyotp.random_base32()
     secret_key = generate_secret_key()
     
-    new_user = User(email=email, password_hash=password_hash, salt=salt, totp_secret=totp_secret)
-    db.add(new_user)
-    db.commit()
-    db.close()
-    
     click.echo("\n==================================================")
-    click.echo("ACCOUNT SUCCESSFULLY INITIALIZED")
+    click.echo("ACCOUNT SETUP INITIALIZED (PENDING 2FA ACTIVATION)")
     click.echo("==================================================")
     click.echo(f"Registrant Email: {email}")
     click.echo(f"Your Secret Key:  {secret_key}")
     click.echo(f"2FA Setup Key:    {totp_secret}")
     click.echo("==================================================")
     click.echo("IMPORTANT SECURITY INSTRUCTIONS:")
-    click.echo("1. Copy the Secret Key and store it in a safe place.")
+    click.echo("1. Copy the Secret Key above and store it in a safe place.")
     click.echo("2. Add the 2FA Setup Key manually to Google Authenticator.")
+    click.echo("==================================================\n")
+    
+    totp = pyotp.totp.TOTP(totp_secret)
+    code = click.prompt("Enter the 6-digit Google Authenticator code to verify and activate your vault")
+    
+    if not totp.verify(code.strip()):
+        click.echo("Error: Invalid 2FA verification code. Registration aborted. User not created.", err=True)
+        db.close()
+        raise click.Abort()
+        
+    new_user = User(email=email, password_hash=password_hash, salt=salt, totp_secret=totp_secret)
+    db.add(new_user)
+    db.commit()
+    db.close()
+    
+    click.echo("\n==================================================")
+    click.echo("ACCOUNT SUCCESSFULLY REGISTERED AND ACTIVATED")
     click.echo("==================================================\n")
 
 @cli.command()

@@ -117,3 +117,4 @@ dmypy.json
 pyvault.db
 secret.key
 .vercel
+.env*
