@@ -5,6 +5,11 @@ def generate_key():
     return Fernet.generate_key()
 
 def load_key():
+    # Prioritize environment variable for container deployments
+    env_key = os.environ.get("PYVAULT_SECRET_KEY")
+    if env_key:
+        return env_key.encode()
+
     key_file = 'secret.key'
     if os.path.exists(key_file):
         with open(key_file, 'rb') as f:

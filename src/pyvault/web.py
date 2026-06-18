@@ -6,7 +6,7 @@ from .utils import generate_password
 import os
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
 # Initialize database
 init_db()
@@ -109,4 +109,7 @@ def generate():
     return render_template('generate.html', password=password)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5002)
+    port = int(os.environ.get("PORT", 5002))
+    host = os.environ.get("HOST", "127.0.0.1")
+    debug = os.environ.get("FLASK_DEBUG", "True").lower() in ("true", "1", "t")
+    app.run(host=host, port=port, debug=debug)

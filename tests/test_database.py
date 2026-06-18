@@ -1,8 +1,14 @@
+import os
 import pytest
-from pyvault.database import init_db, get_db
+
+# Configure database to run in-memory for testing
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+
+from pyvault.database import init_db, engine
+from sqlalchemy import inspect
 
 def test_init_db():
-    # Test database initialization
     init_db()
-    # Check if tables are created
-    pass
+    inspector = inspect(engine)
+    tables = inspector.get_table_names()
+    assert "passwords" in tables
