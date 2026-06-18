@@ -38,7 +38,7 @@ def index():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    """Register step 1: Email and Master Password"""
+    """Register step 1: Email and Master Password (held in session)"""
     if 'user_id' in session:
         return redirect(url_for('index'))
         
@@ -48,25 +48,18 @@ def register():
         
         db = SessionLocal()
         existing = db.query(User).filter_by(email=email).first()
-        if existing:
-            flash('Email address already registered.', 'error')
-            db.close()
-            return redirect(url_for('register'))
-            
-        salt = os.urandom(16).hex()
-        password_hash = generate_password_hash(password)
-        totp_secret = pyotp.random_base32()
-        secret_key = generate_secret_key()
-        
-        new_user = User(email=email, password_hash=password_hash, salt=salt, totp_secret=totp_secret)
-        db.add(new_user)
-        db.commit()
         db.close()
         
-        # Save setup information in session for Step 2
-        session['setup_email'] = email
-        session['setup_totp_secret'] = totp_secret
-        session['setup_secret_key'] = secret_key
+        if existing:
+            flash('Email address already registered.', 'error')
+            return redirect(url_for('register'))
+            
+        # Hold registration details in session. DO NOT insert to DB yet.
+        session['reg_email'] = email
+        session['reg_password_hash'] = generate_password_hash(password)
+        session['reg_salt'] = os.urandom(16).hex()
+        session['reg_totp_secret'] = pyotp.random_base32()
+        session['reg_secret_key'] = generate_secret_key()
         
         return redirect(url_for('setup_2fa'))
         
@@ -74,19 +67,18 @@ def register():
 
 @app.route('/setup-2fa', methods=['GET', 'POST'])
 def setup_2fa():
-    """Register step 2: Display Secret Key and scan TOTP QR Code"""
-    if 'setup_email' not in session or 'setup_totp_secret' not in session:
+    """Register step 2: Display Secret Key and scan TOTP QR Code, then write user to DB"""
+    if 'reg_email' not in session or 'reg_totp_secret' not in session:
         return redirect(url_for('register'))
         
-    email = session['setup_email']
-    totp_secret = session['setup_totp_secret']
-    secret_key = session['setup_secret_key']
+    email = session['reg_email']
+    totp_secret = session['reg_totp_secret']
+    secret_key = session['reg_secret_key']
     
     # Generate Google Authenticator URI
     totp = pyotp.totp.TOTP(totp_secret)
     provisioning_uri = totp.provisioning_uri(name=email, issuer_name="PyVault")
     
-    # Render SVG QR Code
     # Render SVG QR Code using SvgPathImage (produces standard black paths without svg: namespace prefix)
     factory = qrcode.image.svg.SvgPathImage
     img = qrcode.make(provisioning_uri, image_factory=factory)
@@ -97,10 +89,32 @@ def setup_2fa():
     if request.method == 'POST':
         code = request.form['code'].strip()
         if totp.verify(code):
-            # 2FA code is valid! Cleanup and finish registration.
-            session.pop('setup_email', None)
-            session.pop('setup_totp_secret', None)
-            session.pop('setup_secret_key', None)
+            # 2FA code verified successfully! Now save the user account to the database.
+            db = SessionLocal()
+            existing = db.query(User).filter_by(email=email).first()
+            if existing:
+                flash('Email address already registered.', 'error')
+                db.close()
+                session.clear()
+                return redirect(url_for('register'))
+                
+            new_user = User(
+                email=email,
+                password_hash=session['reg_password_hash'],
+                salt=session['reg_salt'],
+                totp_secret=totp_secret
+            )
+            db.add(new_user)
+            db.commit()
+            db.close()
+            
+            # Clear registration session state
+            session.pop('reg_email', None)
+            session.pop('reg_password_hash', None)
+            session.pop('reg_salt', None)
+            session.pop('reg_totp_secret', None)
+            session.pop('reg_secret_key', None)
+            
             flash('Registration successful! Please log in using your Master Password, Secret Key, and 2FA Code.', 'success')
             return redirect(url_for('login'))
         else:

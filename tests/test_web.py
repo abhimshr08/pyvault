@@ -33,8 +33,8 @@ def register_and_login(client, email, password):
     
     # Extract keys from temporary setup session
     with client.session_transaction() as sess:
-        secret_key = sess['setup_secret_key']
-        totp_secret = sess['setup_totp_secret']
+        secret_key = sess['reg_secret_key']
+        totp_secret = sess['reg_totp_secret']
         
     # Step 2: Confirm 2FA to complete registration
     totp = pyotp.totp.TOTP(totp_secret)
