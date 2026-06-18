@@ -10,6 +10,7 @@ class User(Base):
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     salt = Column(String, nullable=False)
+    totp_secret = Column(String, nullable=True)
 
     passwords = relationship("Password", back_populates="user", cascade="all, delete-orphan")
 

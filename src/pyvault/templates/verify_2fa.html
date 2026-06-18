@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}PyVault - Verify 2FA{% endblock %}
+
+{% block content %}
+<h2>2FA Verification</h2>
+
+<p style="text-align: center; color: var(--text-cyan); font-size: 1rem; margin-bottom: 25px;">
+    Decryption key derived. Please enter your Google Authenticator code.
+</p>
+
+<form method="post">
+    <div class="form-group">
+        <label for="code">Enter 6-Digit Verification Code:</label>
+        <input type="text" id="code" name="code" required placeholder="e.g. 123456" autofocus>
+    </div>
+    <button type="submit">Verify Code & Decrypt Vault</button>
+</form>
+{% endblock %}

@@ -1,5 +1,7 @@
 import os
+import re
 import pytest
+import pyotp
 from click.testing import CliRunner
 
 # Configure DB to run in-memory for testing
@@ -27,7 +29,9 @@ def test_register():
         '--password', 'masterpassword'
     ])
     assert result.exit_code == 0
-    assert "registered successfully" in result.output
+    assert "ACCOUNT SUCCESSFULLY INITIALIZED" in result.output
+    assert "Your Secret Key" in result.output
+    assert "2FA Setup Key" in result.output
 
     # Check database
     db = SessionLocal()
@@ -37,18 +41,36 @@ def test_register():
 
 def test_add_password():
     runner = CliRunner()
-    # Register user first
-    runner.invoke(cli, [
+    
+    # 1. Register user
+    reg_result = runner.invoke(cli, [
         'register',
         '--email', 'user@example.com',
         '--password', 'mypassword'
     ])
+    assert reg_result.exit_code == 0
+    
+    # Parse Secret Key and TOTP secret from output
+    secret_key_match = re.search(r'Your Secret Key:\s+(PV-\S+)', reg_result.output)
+    totp_secret_match = re.search(r'2FA Setup Key:\s+(\S+)', reg_result.output)
+    
+    assert secret_key_match is not None
+    assert totp_secret_match is not None
+    
+    secret_key = secret_key_match.group(1)
+    totp_secret = totp_secret_match.group(1)
+    
+    # Generate 2FA code
+    totp = pyotp.totp.TOTP(totp_secret)
+    totp_code = totp.now()
 
-    # Add password
+    # 2. Add password using credentials
     result = runner.invoke(cli, [
         'add', 
         '--email', 'user@example.com',
         '--password', 'mypassword',
+        '--secret-key', secret_key,
+        '--totp-code', totp_code,
         '--service', 'github', 
         '--username', 'testuser', 
         '--password-to-store', 'secure_pass_123'
@@ -65,28 +87,38 @@ def test_add_password():
 
 def test_get_password():
     runner = CliRunner()
-    # Register user
-    runner.invoke(cli, [
+    
+    # 1. Register user
+    reg_result = runner.invoke(cli, [
         'register',
         '--email', 'user2@example.com',
         '--password', 'mypassword2'
     ])
+    
+    secret_key = re.search(r'Your Secret Key:\s+(PV-\S+)', reg_result.output).group(1)
+    totp_secret = re.search(r'2FA Setup Key:\s+(\S+)', reg_result.output).group(1)
+    
+    totp = pyotp.totp.TOTP(totp_secret)
 
-    # First add a password
+    # 2. Add password
     runner.invoke(cli, [
         'add', 
         '--email', 'user2@example.com',
         '--password', 'mypassword2',
+        '--secret-key', secret_key,
+        '--totp-code', totp.now(),
         '--service', 'gmail', 
         '--username', 'gmailuser', 
         '--password-to-store', 'gmail_pass'
     ])
 
-    # Now retrieve it
+    # 3. Retrieve it
     result = runner.invoke(cli, [
         'get', 
         '--email', 'user2@example.com',
         '--password', 'mypassword2',
+        '--secret-key', secret_key,
+        '--totp-code', totp.now(),
         '--service', 'gmail'
     ])
     assert result.exit_code == 0

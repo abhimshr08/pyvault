@@ -3,14 +3,28 @@
 {% block title %}PyVault - View Password{% endblock %}
 
 {% block content %}
-<h2>Password for {{ service }}</h2>
+<h2>Decrypted Credentials</h2>
 
 <div class="password-display">
-    <p><strong>Service:</strong> {{ service }}</p>
-    <p><strong>Username:</strong> {{ username }}</p>
-    <p><strong>Password:</strong></p>
-    <div class="generated-password">{{ password }}</div>
+    <p style="font-size: 1.1rem; margin: 10px 0;"><strong>Service:</strong> <span style="color: var(--text-cyan);">{{ service }}</span></p>
+    <p style="font-size: 1.1rem; margin: 10px 0;"><strong>Username:</strong> <span style="color: var(--text-cyan);">{{ username }}</span></p>
+    <p style="font-size: 1.15rem; margin: 15px 0 5px 0;"><strong>Decrypted Password:</strong></p>
+    <div class="generated-password" id="password-value">{{ password }}</div>
+    <button onclick="copyPassword()" class="copy-btn">Copy Password</button>
 </div>
 
-<a href="{{ url_for('index') }}" class="btn-secondary" style="display: inline-block; padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px;">Back to Home</a>
+<div style="text-align: center; margin-top: 25px;">
+    <a href="{{ url_for('index') }}" class="nav a" style="padding: 8px 18px;">Back to Home</a>
+</div>
+
+<script>
+function copyPassword() {
+    var passwordText = document.getElementById("password-value").innerText;
+    navigator.clipboard.writeText(passwordText).then(function() {
+        alert("Password copied to clipboard!");
+    }, function(err) {
+        alert("Could not copy text: " + err);
+    });
+}
+</script>
 {% endblock %}

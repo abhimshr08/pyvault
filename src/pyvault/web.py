@@ -2,10 +2,14 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import os
+import io
+import pyotp
+import qrcode
+import qrcode.image.svg
 
 from .database import init_db, SessionLocal
 from .models import Password, User
-from .encryption import derive_user_key, encrypt_password, decrypt_password
+from .encryption import generate_secret_key, derive_user_key, encrypt_password, decrypt_password
 from .utils import generate_password
 
 app = Flask(__name__)
@@ -34,12 +38,12 @@ def index():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    """Register a new user account"""
+    """Register step 1: Email and Master Password"""
     if 'user_id' in session:
         return redirect(url_for('index'))
         
     if request.method == 'POST':
-        email = request.form['email']
+        email = request.form['email'].strip()
         password = request.form['password']
         
         db = SessionLocal()
@@ -51,25 +55,68 @@ def register():
             
         salt = os.urandom(16).hex()
         password_hash = generate_password_hash(password)
-        new_user = User(email=email, password_hash=password_hash, salt=salt)
+        totp_secret = pyotp.random_base32()
+        secret_key = generate_secret_key()
+        
+        new_user = User(email=email, password_hash=password_hash, salt=salt, totp_secret=totp_secret)
         db.add(new_user)
         db.commit()
         db.close()
         
-        flash('Registration successful! Please log in.', 'success')
-        return redirect(url_for('login'))
+        # Save setup information in session for Step 2
+        session['setup_email'] = email
+        session['setup_totp_secret'] = totp_secret
+        session['setup_secret_key'] = secret_key
+        
+        return redirect(url_for('setup_2fa'))
         
     return render_template('register.html')
 
+@app.route('/setup-2fa', methods=['GET', 'POST'])
+def setup_2fa():
+    """Register step 2: Display Secret Key and scan TOTP QR Code"""
+    if 'setup_email' not in session or 'setup_totp_secret' not in session:
+        return redirect(url_for('register'))
+        
+    email = session['setup_email']
+    totp_secret = session['setup_totp_secret']
+    secret_key = session['setup_secret_key']
+    
+    # Generate Google Authenticator URI
+    totp = pyotp.totp.TOTP(totp_secret)
+    provisioning_uri = totp.provisioning_uri(name=email, issuer_name="PyVault")
+    
+    # Render SVG QR Code
+    factory = qrcode.image.svg.SvgImage
+    img = qrcode.make(provisioning_uri, image_factory=factory)
+    stream = io.BytesIO()
+    img.save(stream)
+    qr_svg = stream.getvalue().decode('utf-8')
+    
+    if request.method == 'POST':
+        code = request.form['code'].strip()
+        if totp.verify(code):
+            # 2FA code is valid! Cleanup and finish registration.
+            session.pop('setup_email', None)
+            session.pop('setup_totp_secret', None)
+            session.pop('setup_secret_key', None)
+            flash('Registration successful! Please log in using your Master Password, Secret Key, and 2FA Code.', 'success')
+            return redirect(url_for('login'))
+        else:
+            flash('Invalid 2FA code. Please verify that your authenticator app is synced and try again.', 'error')
+            
+    return render_template('setup_2fa.html', qr_svg=qr_svg, secret_key=secret_key, email=email)
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Login an existing user"""
+    """Login step 1: Check Master Password and Secret Key"""
     if 'user_id' in session:
         return redirect(url_for('index'))
         
     if request.method == 'POST':
-        email = request.form['email']
+        email = request.form['email'].strip()
         password = request.form['password']
+        secret_key = request.form['secret_key'].strip()
         
         db = SessionLocal()
         user = db.query(User).filter_by(email=email).first()
@@ -79,19 +126,53 @@ def login():
             db.close()
             return redirect(url_for('login'))
             
-        # Derive the key
+        # Derive the key using BOTH Master Password and Secret Key
         salt_bytes = bytes.fromhex(user.salt)
-        user_key = derive_user_key(password, salt_bytes)
-        
-        session['user_id'] = user.id
-        session['email'] = user.email
-        session['user_key'] = user_key.decode()
+        try:
+            user_key = derive_user_key(password, secret_key, salt_bytes)
+        except Exception:
+            flash('Invalid secret key format.', 'error')
+            db.close()
+            return redirect(url_for('login'))
+            
+        session['temp_user_id'] = user.id
+        session['temp_email'] = user.email
+        session['temp_user_key'] = user_key.decode()
         db.close()
         
-        flash('Logged in successfully!', 'success')
-        return redirect(url_for('index'))
+        return redirect(url_for('verify_2fa'))
         
     return render_template('login.html')
+
+@app.route('/verify-2fa', methods=['GET', 'POST'])
+def verify_2fa():
+    """Login step 2: Prompt for Google Authenticator TOTP Code"""
+    if 'temp_user_id' not in session:
+        return redirect(url_for('login'))
+        
+    if request.method == 'POST':
+        code = request.form['code'].strip()
+        
+        db = SessionLocal()
+        user = db.query(User).filter_by(id=session['temp_user_id']).first()
+        db.close()
+        
+        if user:
+            totp = pyotp.totp.TOTP(user.totp_secret)
+            if totp.verify(code):
+                # Promote to full authenticated session
+                session['user_id'] = session.pop('temp_user_id')
+                session['email'] = session.pop('temp_email')
+                session['user_key'] = session.pop('temp_user_key')
+                
+                flash('Logged in successfully!', 'success')
+                return redirect(url_for('index'))
+            else:
+                flash('Invalid 2FA code. Please try again.', 'error')
+        else:
+            return redirect(url_for('login'))
+            
+    return render_template('verify_2fa.html')
 
 @app.route('/logout')
 def logout():
@@ -105,8 +186,8 @@ def logout():
 def add_password():
     """Add a new password"""
     if request.method == 'POST':
-        service = request.form['service']
-        username = request.form['username']
+        service = request.form['service'].strip()
+        username = request.form['username'].strip()
         password = request.form['password'] or generate_password()
 
         db = SessionLocal()

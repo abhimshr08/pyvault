@@ -116,3 +116,4 @@ dmypy.json
 # Project specific
 pyvault.db
 secret.key
+.vercel

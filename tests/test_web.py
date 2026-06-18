@@ -1,5 +1,6 @@
 import os
 import pytest
+import pyotp
 
 # Configure in-memory database for web tests
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
@@ -24,16 +25,36 @@ def client():
     db.close()
 
 def register_and_login(client, email, password):
-    # Register
+    # Step 1: Register
     client.post('/register', data={
         'email': email,
         'password': password
+    })
+    
+    # Extract keys from temporary setup session
+    with client.session_transaction() as sess:
+        secret_key = sess['setup_secret_key']
+        totp_secret = sess['setup_totp_secret']
+        
+    # Step 2: Confirm 2FA to complete registration
+    totp = pyotp.totp.TOTP(totp_secret)
+    client.post('/setup-2fa', data={
+        'code': totp.now()
     }, follow_redirects=True)
-    # Login
+    
+    # Step 3: Login Step 1
     client.post('/login', data={
         'email': email,
-        'password': password
+        'password': password,
+        'secret_key': secret_key
+    })
+    
+    # Step 4: Login Step 2 (Verify 2FA)
+    client.post('/verify-2fa', data={
+        'code': totp.now()
     }, follow_redirects=True)
+    
+    return secret_key
 
 def test_unauthenticated_redirect(client):
     rv = client.get('/', follow_redirects=True)
@@ -80,9 +101,9 @@ def test_user_isolation(client):
     # Check index page: User 2 should NOT see User 1's password
     rv = client.get('/')
     assert b"github" not in rv.data
-    assert b"No passwords stored yet" in rv.data
+    assert b"No credentials registered in this vault" in rv.data
 
 def test_generate_password(client):
     rv = client.get('/generate')
     assert rv.status_code == 200
-    assert b"Generated Password" in rv.data
+    assert b"Generated Secure Password" in rv.data

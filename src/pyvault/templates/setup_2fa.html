@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}PyVault - Setup 2FA{% endblock %}
+
+{% block content %}
+<h2>Secure Registration Credentials</h2>
+
+<p style="text-align: center; color: var(--text-cyan); font-size: 1rem; margin-bottom: 20px;">
+    Your account has been initialized! Please complete the security setup below.
+</p>
+
+<div class="password-display">
+    <label>🔒 Your 128-bit Secret Key:</label>
+    <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0 0 10px 0;">
+        Save this key securely. It is NEVER saved on the server. You need it to decrypt your passwords on login.
+    </p>
+    <div class="secret-key-block" id="secret-key">{{ secret_key }}</div>
+    <button onclick="copyToClipboard('{{ secret_key }}')" class="copy-btn">Copy Secret Key</button>
+</div>
+
+<div class="password-display">
+    <label>📱 Google Authenticator 2FA Setup:</label>
+    <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0 0 15px 0;">
+        Scan the QR code below using Google Authenticator or Authy to configure 2FA.
+    </p>
+    <div class="qr-container">
+        {{ qr_svg|safe }}
+    </div>
+</div>
+
+<form method="post">
+    <div class="form-group">
+        <label for="code">Enter 6-Digit Verification Code:</label>
+        <input type="text" id="code" name="code" required placeholder="e.g. 123456" autofocus>
+    </div>
+    <button type="submit">Verify Code & Activate Vault</button>
+</form>
+
+<script>
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(function() {
+        alert("Secret Key copied to clipboard! Save it securely.");
+    }, function(err) {
+        alert("Could not copy text: " + err);
+    });
+}
+</script>
+{% endblock %}

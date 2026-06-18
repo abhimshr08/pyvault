@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}PyVault - Login{% endblock %}
+{% block title %}PyVault - Decrypt Vault{% endblock %}
 
 {% block content %}
-<h2>Log In to PyVault</h2>
+<h2>Decrypt Cyber-Vault</h2>
 
 <form method="post">
     <div class="form-group">
-        <label for="email">Email Address:</label>
-        <input type="text" id="email" name="email" required placeholder="your.name@example.com">
+        <label for="email">User Email Address:</label>
+        <input type="text" id="email" name="email" required placeholder="email@domain.com">
     </div>
 
     <div class="form-group">
@@ -16,10 +16,15 @@
         <input type="password" id="password" name="password" required placeholder="Enter master password">
     </div>
 
-    <button type="submit">Log In</button>
+    <div class="form-group">
+        <label for="secret_key">Secret Key (PV-XXXX-XXXX-...):</label>
+        <input type="password" id="secret_key" name="secret_key" required placeholder="PV-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX">
+    </div>
+
+    <button type="submit">Decrypt & Proceed</button>
 </form>
 
-<p style="text-align: center; margin-top: 20px;">
-    Don't have an account? <a href="{{ url_for('register') }}" style="color: #667eea; text-decoration: none;">Register here</a>.
+<p style="text-align: center; margin-top: 25px; font-size: 0.95rem; color: var(--text-muted);">
+    UNAUTHORIZED ACCESS IS LOGGED. Need a new vault? <a href="{{ url_for('register') }}" style="color: var(--text-cyan); text-decoration: none; text-shadow: 0 0 5px var(--glow-cyan);">Register account</a>.
 </p>
 {% endblock %}
