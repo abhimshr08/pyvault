@@ -87,7 +87,8 @@ def setup_2fa():
     provisioning_uri = totp.provisioning_uri(name=email, issuer_name="PyVault")
     
     # Render SVG QR Code
-    factory = qrcode.image.svg.SvgImage
+    # Render SVG QR Code using SvgPathImage (produces standard black paths without svg: namespace prefix)
+    factory = qrcode.image.svg.SvgPathImage
     img = qrcode.make(provisioning_uri, image_factory=factory)
     stream = io.BytesIO()
     img.save(stream)
@@ -105,7 +106,7 @@ def setup_2fa():
         else:
             flash('Invalid 2FA code. Please verify that your authenticator app is synced and try again.', 'error')
             
-    return render_template('setup_2fa.html', qr_svg=qr_svg, secret_key=secret_key, email=email)
+    return render_template('setup_2fa.html', qr_svg=qr_svg, secret_key=secret_key, email=email, totp_secret=totp_secret)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
