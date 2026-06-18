@@ -1,9 +1,12 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
-from .database import init_db, SessionLocal
-from .models import Password
-from .encryption import load_key, encrypt_password, decrypt_password
-from .utils import generate_password
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 import os
+
+from .database import init_db, SessionLocal
+from .models import Password, User
+from .encryption import derive_user_key, encrypt_password, decrypt_password
+from .utils import generate_password
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
@@ -11,15 +14,94 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 # Initialize database
 init_db()
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session or 'user_key' not in session:
+            flash('Please log in to access this page.', 'error')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 @app.route('/')
+@login_required
 def index():
-    """Home page - list all passwords"""
-    session = SessionLocal()
-    passwords = session.query(Password).all()
-    session.close()
+    """Home page - list all passwords for current user"""
+    db = SessionLocal()
+    passwords = db.query(Password).filter_by(user_id=session['user_id']).all()
+    db.close()
     return render_template('index.html', passwords=passwords)
 
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """Register a new user account"""
+    if 'user_id' in session:
+        return redirect(url_for('index'))
+        
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password']
+        
+        db = SessionLocal()
+        existing = db.query(User).filter_by(email=email).first()
+        if existing:
+            flash('Email address already registered.', 'error')
+            db.close()
+            return redirect(url_for('register'))
+            
+        salt = os.urandom(16).hex()
+        password_hash = generate_password_hash(password)
+        new_user = User(email=email, password_hash=password_hash, salt=salt)
+        db.add(new_user)
+        db.commit()
+        db.close()
+        
+        flash('Registration successful! Please log in.', 'success')
+        return redirect(url_for('login'))
+        
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login an existing user"""
+    if 'user_id' in session:
+        return redirect(url_for('index'))
+        
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password']
+        
+        db = SessionLocal()
+        user = db.query(User).filter_by(email=email).first()
+        
+        if not user or not check_password_hash(user.password_hash, password):
+            flash('Invalid email or password.', 'error')
+            db.close()
+            return redirect(url_for('login'))
+            
+        # Derive the key
+        salt_bytes = bytes.fromhex(user.salt)
+        user_key = derive_user_key(password, salt_bytes)
+        
+        session['user_id'] = user.id
+        session['email'] = user.email
+        session['user_key'] = user_key.decode()
+        db.close()
+        
+        flash('Logged in successfully!', 'success')
+        return redirect(url_for('index'))
+        
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    """Logout current user"""
+    session.clear()
+    flash('Logged out successfully.', 'success')
+    return redirect(url_for('login'))
+
 @app.route('/add', methods=['GET', 'POST'])
+@login_required
 def add_password():
     """Add a new password"""
     if request.method == 'POST':
@@ -27,21 +109,25 @@ def add_password():
         username = request.form['username']
         password = request.form['password'] or generate_password()
 
-        session = SessionLocal()
+        db = SessionLocal()
 
-        # Check if service already exists
-        existing = session.query(Password).filter_by(service=service).first()
+        # Check if service already exists for this user
+        existing = db.query(Password).filter_by(user_id=session['user_id'], service=service).first()
         if existing:
             flash(f'Password for {service} already exists!', 'error')
-            session.close()
+            db.close()
             return redirect(url_for('add_password'))
 
-        key = load_key()
-        encrypted_password = encrypt_password(password, key)
-        new_password = Password(service=service, username=username, encrypted_password=encrypted_password)
-        session.add(new_password)
-        session.commit()
-        session.close()
+        encrypted_password = encrypt_password(password, session['user_key'])
+        new_password = Password(
+            user_id=session['user_id'],
+            service=service,
+            username=username,
+            encrypted_password=encrypted_password
+        )
+        db.add(new_password)
+        db.commit()
+        db.close()
 
         flash(f'Password for {service} added successfully!', 'success')
         return redirect(url_for('index'))
@@ -49,57 +135,59 @@ def add_password():
     return render_template('add.html')
 
 @app.route('/get/<service>')
+@login_required
 def get_password(service):
     """Retrieve and display a password"""
-    session = SessionLocal()
-    password_entry = session.query(Password).filter_by(service=service).first()
-    session.close()
+    db = SessionLocal()
+    password_entry = db.query(Password).filter_by(user_id=session['user_id'], service=service).first()
+    db.close()
 
     if not password_entry:
         flash(f'No password found for {service}', 'error')
         return redirect(url_for('index'))
 
-    key = load_key()
-    decrypted_password = decrypt_password(password_entry.encrypted_password, key)
+    decrypted_password = decrypt_password(password_entry.encrypted_password, session['user_key'])
     return render_template('get.html', service=service, username=password_entry.username, password=decrypted_password)
 
 @app.route('/update/<service>', methods=['GET', 'POST'])
+@login_required
 def update_password(service):
     """Update an existing password"""
-    session = SessionLocal()
-    password_entry = session.query(Password).filter_by(service=service).first()
+    db = SessionLocal()
+    password_entry = db.query(Password).filter_by(user_id=session['user_id'], service=service).first()
 
     if not password_entry:
-        session.close()
+        db.close()
         flash(f'No password found for {service}', 'error')
         return redirect(url_for('index'))
 
     if request.method == 'POST':
         new_password = request.form['password'] or generate_password()
-        key = load_key()
-        password_entry.encrypted_password = encrypt_password(new_password, key)
-        session.commit()
-        session.close()
+        password_entry.encrypted_password = encrypt_password(new_password, session['user_key'])
+        db.commit()
+        db.close()
         flash(f'Password for {service} updated successfully!', 'success')
         return redirect(url_for('index'))
 
-    session.close()
-    return render_template('update.html', service=service, username=password_entry.username)
+    username = password_entry.username
+    db.close()
+    return render_template('update.html', service=service, username=username)
 
 @app.route('/delete/<service>')
+@login_required
 def delete_password(service):
     """Delete a password"""
-    session = SessionLocal()
-    password_entry = session.query(Password).filter_by(service=service).first()
+    db = SessionLocal()
+    password_entry = db.query(Password).filter_by(user_id=session['user_id'], service=service).first()
 
     if password_entry:
-        session.delete(password_entry)
-        session.commit()
+        db.delete(password_entry)
+        db.commit()
         flash(f'Password for {service} deleted successfully!', 'success')
     else:
         flash(f'No password found for {service}', 'error')
 
-    session.close()
+    db.close()
     return redirect(url_for('index'))
 
 @app.route('/generate')

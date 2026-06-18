@@ -12,3 +12,4 @@ def test_init_db():
     inspector = inspect(engine)
     tables = inspector.get_table_names()
     assert "passwords" in tables
+    assert "users" in tables

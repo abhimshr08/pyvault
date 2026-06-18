@@ -149,9 +149,15 @@
         </div>
 
         <div class="nav">
-            <a href="{{ url_for('index') }}">Home</a>
-            <a href="{{ url_for('add_password') }}">Add Password</a>
-            <a href="{{ url_for('generate') }}">Generate Password</a>
+            {% if session.get('user_id') %}
+                <a href="{{ url_for('index') }}">Home</a>
+                <a href="{{ url_for('add_password') }}">Add Password</a>
+                <a href="{{ url_for('generate') }}">Generate Password</a>
+                <a href="{{ url_for('logout') }}" style="background: #dc3545;">Logout ({{ session.get('email') }})</a>
+            {% else %}
+                <a href="{{ url_for('login') }}">Login</a>
+                <a href="{{ url_for('register') }}">Register</a>
+            {% endif %}
         </div>
 
         {% with messages = get_flashed_messages(with_categories=true) %}

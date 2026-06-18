@@ -1,29 +1,26 @@
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+import base64
 import os
 
-def generate_key():
-    return Fernet.generate_key()
-
-def load_key():
-    # Prioritize environment variable for container deployments
-    env_key = os.environ.get("PYVAULT_SECRET_KEY")
-    if env_key:
-        return env_key.encode()
-
-    key_file = 'secret.key'
-    if os.path.exists(key_file):
-        with open(key_file, 'rb') as f:
-            return f.read()
-    else:
-        key = generate_key()
-        with open(key_file, 'wb') as f:
-            f.write(key)
-        return key
+def derive_user_key(master_password: str, salt: bytes) -> bytes:
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(master_password.encode()))
 
 def encrypt_password(password, key):
+    if isinstance(key, str):
+        key = key.encode()
     f = Fernet(key)
     return f.encrypt(password.encode()).decode()
 
 def decrypt_password(encrypted_password, key):
+    if isinstance(key, str):
+        key = key.encode()
     f = Fernet(key)
     return f.decrypt(encrypted_password.encode()).decode()
