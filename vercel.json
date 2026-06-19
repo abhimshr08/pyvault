@@ -1,15 +1,9 @@
 {
   "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "src/pyvault/web.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "src/pyvault/web.py"
+      "source": "/(.*)",
+      "destination": "/api/index.py"
     }
   ]
 }
