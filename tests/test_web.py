@@ -107,3 +107,22 @@ def test_generate_password(client):
     rv = client.get('/generate')
     assert rv.status_code == 200
     assert b"Generated Secure Password" in rv.data
+
+def test_keep_alive(client, monkeypatch):
+    # Case 1: CRON_SECRET is not set
+    monkeypatch.delenv("CRON_SECRET", raising=False)
+    rv = client.get('/api/keep-alive')
+    assert rv.status_code == 200
+    assert b"active" in rv.data
+
+    # Case 2: CRON_SECRET is set, request is unauthorized
+    monkeypatch.setenv("CRON_SECRET", "super_secret_token")
+    rv = client.get('/api/keep-alive')
+    assert rv.status_code == 401
+
+    # Case 3: CRON_SECRET is set, request is authorized
+    headers = {"Authorization": "Bearer super_secret_token"}
+    rv = client.get('/api/keep-alive', headers=headers)
+    assert rv.status_code == 200
+    assert b"active" in rv.data
+

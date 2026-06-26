@@ -292,6 +292,24 @@ def generate():
     password = generate_password()
     return render_template('generate.html', password=password)
 
+@app.route('/api/keep-alive')
+def keep_alive():
+    """Keep-alive route to prevent Supabase database from pausing due to inactivity"""
+    cron_secret = os.environ.get("CRON_SECRET")
+    if cron_secret:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or auth_header != f"Bearer {cron_secret}":
+            return {"status": "unauthorized"}, 401
+            
+    try:
+        db = SessionLocal()
+        # Query the User table to trigger a database connection and keep it active
+        db.query(User).first()
+        db.close()
+        return {"status": "active", "message": "Database pinged successfully"}, 200
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5002))
     host = os.environ.get("HOST", "127.0.0.1")
